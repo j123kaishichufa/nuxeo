@@ -35,7 +35,6 @@ import javax.ws.rs.ext.Provider;
 import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.blobholder.DocumentBlobHolder;
-import org.nuxeo.ecm.core.api.impl.blob.JSONBlob;
 import org.nuxeo.ecm.core.io.download.BufferingServletOutputStream;
 import org.nuxeo.ecm.core.io.download.DownloadService;
 import org.nuxeo.runtime.api.Framework;
@@ -58,6 +57,18 @@ public class DocumentBlobHolderWriter implements MessageBodyWriter<DocumentBlobH
     protected HttpServletResponse response;
 
     @Override
+    public boolean isWriteable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
+        return DocumentBlobHolder.class.isAssignableFrom(type);
+    }
+
+    @Override
+    public long getSize(DocumentBlobHolder blobHolder, Class<?> type, Type genericType, Annotation[] annotations,
+            MediaType mediaType) {
+        long n = blobHolder.getBlob().getLength();
+        return n < 0 ? -1 : n;
+    }
+
+    @Override
     public void writeTo(DocumentBlobHolder blobHolder, Class<?> type, Type genericType, Annotation[] annotations,
             MediaType mediaType, MultivaluedMap<String, Object> httpHeaders, OutputStream entityStream)
             throws IOException {
@@ -66,13 +77,12 @@ public class DocumentBlobHolderWriter implements MessageBodyWriter<DocumentBlobH
         Blob blob = blobHolder.getBlob();
         if (Framework.isTestModeSet()) {
             transferBlob(blob, entityStream);
-        } else {
-            DownloadService downloadService = Framework.getService(DownloadService.class);
-            DocumentModel doc = blobHolder.getDocument();
-            String xpath = blobHolder.getXpath();
-            String reason = blob instanceof JSONBlob ? "webengine" : "download";
-            downloadService.downloadBlob(request, response, doc, xpath, blob, blob.getFilename(), reason);
+            return;
         }
+        DocumentModel doc = blobHolder.getDocument();
+        String xpath = blobHolder.getXpath();
+        DownloadService downloadService = Framework.getService(DownloadService.class);
+        downloadService.downloadBlob(request, response, doc, xpath, blob, blob.getFilename(), "download");
     }
 
     protected void commitAndReopenTransaction() {
@@ -88,18 +98,6 @@ public class DocumentBlobHolderWriter implements MessageBodyWriter<DocumentBlobH
         }
         blob.transferTo(entityStream);
         entityStream.flush();
-    }
-
-    @Override
-    public long getSize(DocumentBlobHolder blobHolder, Class<?> type, Type genericType, Annotation[] annotations,
-            MediaType mediaType) {
-        long n = blobHolder.getBlob().getLength();
-        return n <= 0 ? -1 : n;
-    }
-
-    @Override
-    public boolean isWriteable(Class<?> type, Type genericType, Annotation[] annotations, MediaType mediaType) {
-        return DocumentBlobHolder.class.isAssignableFrom(type);
     }
 
 }

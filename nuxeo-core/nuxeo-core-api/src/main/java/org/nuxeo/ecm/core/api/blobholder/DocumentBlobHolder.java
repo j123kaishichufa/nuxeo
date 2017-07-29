@@ -23,9 +23,11 @@ import java.util.Calendar;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.DocumentModel;
+import org.nuxeo.ecm.core.api.model.Property;
 import org.nuxeo.ecm.core.utils.BlobsExtractor;
 
 /**
@@ -53,7 +55,7 @@ public class DocumentBlobHolder extends AbstractBlobHolder {
 
     @Override
     public Blob getBlob() {
-        return(Blob) doc.getPropertyValue(xPath);
+        return (Blob) doc.getPropertyValue(xPath);
     }
 
     @Override
@@ -91,30 +93,50 @@ public class DocumentBlobHolder extends AbstractBlobHolder {
     @Override
     public List<Blob> getBlobs() {
         if (blobList == null) {
-            List<Blob> blobs = new BlobsExtractor().getBlobs(doc);
-            Blob main = getBlob();
-            if (main != null) {
-                // be sure the "main" blob is always in first position
-                Iterator<Blob> bi = blobs.iterator();
-                while (bi.hasNext()) {
-                    Blob blob = bi.next();
-                    if (blob.getDigest() != null) {
-                        if (blob.getDigest().equals(main.getDigest())) {
-                            bi.remove();
-                            break;
-                        }
-                    } else if (blob.getFilename() != null) {
-                        if (blob.getFilename().equals(main.getFilename())) {
-                            bi.remove();
-                            break;
-                        }
-                    }
-                }
-                blobs.add(0, main);
-            }
-            blobList = blobs;
+            List<Property> properties = getBlobProperties();
+            blobList = properties.stream().map(prop -> (Blob) prop.getValue()).collect(Collectors.toList());
         }
         return blobList;
+    }
+
+    /**
+     * Returns a new {@link DocumentBlobHolder} for the blob at the given {@code index} where {@link #getBlob} and
+     * {@link #getXpath} will return information about the blob.
+     *
+     * @param index the blob index
+     * @return the new blob holder
+     * @throws IndexOutOfBoundsException if the index is invalid
+     * @since 9.3
+     */
+    public DocumentBlobHolder asDirectBlobHolder(int index) throws IndexOutOfBoundsException {
+        List<Property> properties = getBlobProperties();
+        blobList = properties.stream().map(prop -> (Blob) prop.getValue()).collect(Collectors.toList());
+        String xpath = properties.get(index).getXPath();
+        DocumentBlobHolder bh = new DocumentBlobHolder(doc, xpath);
+        bh.blobList = blobList;
+        return bh;
+    }
+
+    /**
+     * Gets all the blob properties, with the main blob first.
+     *
+     * @since 9.3
+     */
+    protected List<Property> getBlobProperties() {
+        List<Property> properties = new BlobsExtractor().getBlobsProperties(doc);
+        if (xPath != null) {
+            // be sure that the "main" blob is always in first position
+            Iterator<Property> it = properties.iterator();
+            while (it.hasNext()) {
+                Property property = it.next();
+                if (property.getXPath().equals(xPath)) {
+                    it.remove();
+                    properties.add(0, property);
+                    break;
+                }
+            }
+        }
+        return properties;
     }
 
     /**
